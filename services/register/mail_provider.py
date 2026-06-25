@@ -413,11 +413,15 @@ class CloudflareTempMailProvider(BaseMailProvider):
         super().__init__(conf, str(entry.get("provider_ref") or ""))
         self.api_base = str(entry["api_base"]).rstrip("/")
         self.admin_password = str(entry["admin_password"]).strip()
+        self.site_password = str(entry.get("site_password") or entry.get("custom_auth") or "").strip()
         self.domain = entry.get("domain") or []
         self.session = _create_session(conf)
 
     def _request(self, method: str, path: str, headers: dict | None = None, params: dict | None = None, payload: dict | None = None, expected: tuple[int, ...] = (200,)):
-        resp = self.session.request(method.upper(), f"{self.api_base}{path}", headers={"Content-Type": "application/json", "User-Agent": self.conf["user_agent"], **(headers or {})}, params=params, json=payload, timeout=self.conf["request_timeout"], verify=False)
+        merged_headers = {"Content-Type": "application/json", "User-Agent": self.conf["user_agent"], **(headers or {})}
+        if self.site_password:
+            merged_headers["x-custom-auth"] = self.site_password
+        resp = self.session.request(method.upper(), f"{self.api_base}{path}", headers=merged_headers, params=params, json=payload, timeout=self.conf["request_timeout"], verify=False)
         if resp.status_code not in expected:
             raise RuntimeError(f"CloudflareTempMail 请求失败: {method} {path}, HTTP {resp.status_code}, body={resp.text[:300]}")
         return {} if resp.status_code == 204 else resp.json()
